@@ -58,7 +58,7 @@ jobs:
         run: |
           sudo tailscaled &
           sleep 8
-          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=HTNodes || echo "Tailscale already up"
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=CubePlayz || echo "Tailscale already up"
 
       - name: Create user HTNodes with sudo
         run: |
