@@ -36,9 +36,9 @@ jobs:
       - name: Restore backup files
         run: |
           if [ -f ./backup/backup.tar.gz ]; then
-            echo "✅ Restoring backup files..."
-            sudo mkdir -p /opt/vps-backup
-            tar -xzf ./backup/backup.tar.gz -C /
+            echo "✅ Restoring /home/HTNodes from backup..."
+            sudo mkdir -p /home/HTNodes
+            sudo tar -xzf ./backup/backup.tar.gz -C /
           else
             echo "⚠ No backup found, starting fresh"
           fi
@@ -114,20 +114,12 @@ jobs:
             sudo cp /var/lib/tailscale/tailscaled.state "$BACKUP_DIR/data/"
           fi
 
-          echo "📂 Preparing directories to backup: /etc /var /home/HTNodes /opt"
-          TOTAL_SIZE=$(du -sb /etc /var /home/HTNodes /opt \
-            --exclude=/var/log \
-            --exclude=/var/cache \
-            --exclude=/var/lib/apt/lists \
-            --exclude=/var/lib/docker 2>/dev/null | awk '{sum+=$1} END {print sum}')
-          echo "📦 Total size after exclusions: $TOTAL_SIZE bytes"
+          echo "📂 Preparing directory to backup: /home/HTNodes"
+          TOTAL_SIZE=$(du -sb /home/HTNodes 2>/dev/null | awk '{print $1}')
+          echo "📦 Total size: $TOTAL_SIZE bytes"
 
           echo "🔄 Creating compressed backup with progress bar..."
-          sudo tar --exclude='/var/log' \
-                   --exclude='/var/cache' \
-                   --exclude='/var/lib/apt/lists' \
-                   --exclude='/var/lib/docker' \
-                   -cf - /etc /var /home/HTNodes /opt | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
+          sudo tar -cf - /home/HTNodes | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
 
           echo "✅ Backup complete!"
 
