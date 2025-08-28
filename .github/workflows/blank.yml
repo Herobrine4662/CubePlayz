@@ -87,7 +87,7 @@ jobs:
           SSHX_PID=$!
 
           echo "✅ SSHX started. Keeping alive for 5h 40m..."
-          SECONDS_LEFT=$((340 * 60))
+          SECONDS_LEFT=$((320 * 60))
           while [ $SECONDS_LEFT -gt 0 ]; do
             if ps -p $SSHX_PID > /dev/null; then
               echo "SSHX alive | Time left: $((SECONDS_LEFT / 60)) mins"
