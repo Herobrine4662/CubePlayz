@@ -1,4 +1,4 @@
-name: CubePlayzVps
+name: HTNodes
 
 on:
   schedule:
@@ -17,28 +17,21 @@ jobs:
       - name: Set hostname to HTNodes
         run: sudo hostnamectl set-hostname HTNodes
 
-      - name: Download VPS backup (if any)
-        uses: actions/download-artifact@v4
-        with:
-          name: vps-backup
-          path: ./backup
-        continue-on-error: true
-
-      - name: Install prerequisites
+      # 1. Download backup.tar.gz from release latest-backup
+      - name: Download latest backup from release
         run: |
-          sudo apt update
-          sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
+          echo "📥 Downloading backup from latest-backup release..."
+          gh release download latest-backup --repo ${{ github.repository }} --pattern "backup.tar.gz" || echo "⚠ No backup found"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-
+      # 2. Restore /home/HTNodes + tailscaled.state
       - name: Restore backup files
         run: |
-          if [ -f ./backup/backup.tar.gz ]; then
-            echo "✅ Restoring /home/HTNodes from backup..."
-            sudo mkdir -p /home/HTNodes
-            sudo tar -xzf ./backup/backup.tar.gz -C /
+          if [ -f backup.tar.gz ]; then
+            echo "✅ Restoring backup..."
+            sudo mkdir -p /opt/vps-backup
+            tar -xzf backup.tar.gz -C /
           else
             echo "⚠ No backup found, starting fresh"
           fi
@@ -54,11 +47,21 @@ jobs:
             echo "⚠ No Tailscale state to restore"
           fi
 
+      # 3. Run VPS session
+      - name: Install prerequisites
+        run: |
+          sudo apt update
+          sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
+
+      - name: Install Tailscale
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+
       - name: Start Tailscale
         run: |
           sudo tailscaled &
           sleep 8
-          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=CubePlayzVps || echo "Tailscale already up"
+          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=HTVPS || echo "Tailscale already up"
 
       - name: Create user HTNodes with sudo
         run: |
@@ -87,7 +90,7 @@ jobs:
           SSHX_PID=$!
 
           echo "✅ SSHX started. Keeping alive for 5h 40m..."
-          SECONDS_LEFT=$((320 * 60))
+          SECONDS_LEFT=$((340 * 60))
           while [ $SECONDS_LEFT -gt 0 ]; do
             if ps -p $SSHX_PID > /dev/null; then
               echo "SSHX alive | Time left: $((SECONDS_LEFT / 60)) mins"
@@ -103,6 +106,7 @@ jobs:
           wait $SSHX_PID || true
           set +x
 
+      # 4. On shutdown → make new backup
       - name: Backup VPS data
         run: |
           echo "✅ Backing up VPS data..."
@@ -114,17 +118,20 @@ jobs:
             sudo cp /var/lib/tailscale/tailscaled.state "$BACKUP_DIR/data/"
           fi
 
-          echo "📂 Preparing directory to backup: /home/HTNodes"
-          TOTAL_SIZE=$(du -sb /home/HTNodes 2>/dev/null | awk '{print $1}')
+          echo "📂 Preparing directories to backup: /home/HTNodes"
+          TOTAL_SIZE=$(du -sb /home/HTNodes $BACKUP_DIR 2>/dev/null | awk '{sum+=$1} END {print sum}')
           echo "📦 Total size: $TOTAL_SIZE bytes"
 
-          echo "🔄 Creating compressed backup with progress bar..."
-          sudo tar -cf - /home/HTNodes | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
+          echo "🔄 Creating compressed backup..."
+          sudo tar -cf - /home/HTNodes $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
 
           echo "✅ Backup complete!"
 
-      - name: Upload VPS backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: vps-backup
-          path: backup.tar.gz
+      # 5. Upload to release latest-backup
+      - name: Upload backup to release
+        run: |
+          echo "📤 Uploading backup.tar.gz to release latest-backup..."
+          gh release delete latest-backup --yes || true
+          gh release create latest-backup backup.tar.gz --title "Latest VPS Backup" --notes "Auto backup" --prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
