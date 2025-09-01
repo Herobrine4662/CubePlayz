@@ -127,11 +127,12 @@ jobs:
 
           echo "✅ Backup complete!"
 
-      # 5. Upload to release latest-backup
+      # 5. Upload to release latest-backup (overwrite old backup)
       - name: Upload backup to release
-        run: |
-          echo "📤 Uploading backup.tar.gz to release latest-backup..."
-          gh release delete latest-backup --yes || true
-          gh release create latest-backup backup.tar.gz --title "Latest VPS Backup" --notes "Auto backup" --prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: latest-backup
+          files: backup.tar.gz
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
