@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write   # ✅ needed for release upload
+  contents: write   # ✅ Needed for release upload/delete
 
 jobs:
   HTNodes:
@@ -50,15 +50,14 @@ jobs:
             echo "⚠ No Tailscale state to restore"
           fi
 
-      # 3. Run VPS session
+      # 3. Run VPS session (same as before)
       - name: Install prerequisites
         run: |
           sudo apt update
           sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
 
       - name: Install Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
+        run: curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Start Tailscale
         run: |
@@ -78,14 +77,11 @@ jobs:
       - name: Start SSHX session and keep alive
         run: |
           set -x
-          echo "💻 Connect via SSHX or Tailscale:"
           TS_IP=$(tailscale ip -4 2>/dev/null | head -n 1)
           if [ -n "$TS_IP" ]; then
             echo "🔑 Tailscale IP: $TS_IP"
             echo "👉 ssh HTNodes@$TS_IP"
             echo "Password: HTNodes"
-          else
-            echo "⚠ No Tailscale IP found."
           fi
 
           echo "✅ Starting SSHX..."
@@ -97,15 +93,13 @@ jobs:
           while [ $SECONDS_LEFT -gt 0 ]; do
             if ps -p $SSHX_PID > /dev/null; then
               echo "SSHX alive | Time left: $((SECONDS_LEFT / 60)) mins"
-            else
-              echo "⚠ SSHX exited early. Still waiting for backup..."
             fi
             sleep 60
             SECONDS_LEFT=$((SECONDS_LEFT - 60))
           done
 
           echo "⏰ Time is up! Killing SSHX if still running..."
-          kill $SSHX_PID || echo "SSHX already stopped."
+          kill $SSHX_PID || true
           wait $SSHX_PID || true
           set +x
 
@@ -116,22 +110,28 @@ jobs:
           BACKUP_DIR="/opt/vps-backup"
           sudo mkdir -p "$BACKUP_DIR/data"
 
-          echo "📂 Copying Tailscale state..."
           if [ -f /var/lib/tailscale/tailscaled.state ]; then
             sudo cp /var/lib/tailscale/tailscaled.state "$BACKUP_DIR/data/"
           fi
 
-          echo "📂 Preparing directories to backup: /home/HTNodes"
           TOTAL_SIZE=$(du -sb /home/HTNodes $BACKUP_DIR 2>/dev/null | awk '{sum+=$1} END {print sum}')
-          echo "📦 Total size: $TOTAL_SIZE bytes"
-
-          echo "🔄 Creating compressed backup..."
           sudo tar -cf - /home/HTNodes $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
 
-          echo "✅ Backup complete!"
+      # 5. Delete old asset + upload new one
+      - name: Delete old backup asset
+        run: |
+          ASSET_ID=$(gh api repos/${{ github.repository }}/releases/tags/latest-backup \
+            --jq '.assets[] | select(.name=="backup.tar.gz") | .id' || true)
+          if [ -n "$ASSET_ID" ]; then
+            echo "🗑 Deleting old backup asset..."
+            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
+          else
+            echo "⚠ No old asset found"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Upload to release latest-backup
-      - name: Upload backup to release
+      - name: Upload new backup to release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest-backup
