@@ -5,6 +5,9 @@ on:
     - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
+permissions:
+  contents: write   # ✅ needed for release upload
+
 jobs:
   HTNodes:
     runs-on: ubuntu-latest
@@ -127,12 +130,11 @@ jobs:
 
           echo "✅ Backup complete!"
 
-      # 5. Upload to release latest-backup (overwrite old backup)
+      # 5. Upload to release latest-backup
       - name: Upload backup to release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest-backup
           files: backup.tar.gz
-          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
