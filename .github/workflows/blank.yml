@@ -16,15 +16,19 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+      - run: echo "Checkout repo... Done ✅"
 
       - name: Set hostname to HTNodes
-        run: sudo hostnamectl set-hostname HTNodes
+        run: |
+          sudo hostnamectl set-hostname HTNodes
+          echo "Set hostname... Done ✅"
 
       # 1. Download backup.tar.gz from release latest-backup
       - name: Download latest backup from release
         run: |
           echo "📥 Downloading backup from latest-backup release..."
           gh release download latest-backup --repo ${{ github.repository }} --pattern "backup.tar.gz" || echo "⚠ No backup found"
+          echo "Download backup... Done ✅"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -34,11 +38,20 @@ jobs:
           if [ -f backup.tar.gz ]; then
             echo "✅ Restoring backup..."
             sudo mkdir -p /opt/vps-backup
-            cd /  # ⬅️ important so paths restore correctly
+            cd /
             sudo tar -xzf $GITHUB_WORKSPACE/backup.tar.gz
+            echo "Restore backup files... Done ✅"
           else
             echo "⚠ No backup found, starting fresh"
           fi
+
+      - name: Verify restored files
+        run: |
+          echo "📂 Contents of /home/HTNodes:"
+          ls -lah /home/HTNodes || echo "⚠ No /home/HTNodes directory"
+          echo "📂 Contents of /opt/vps-backup/data:"
+          ls -lah /opt/vps-backup/data || echo "⚠ No Tailscale state restored"
+          echo "Verify restore... Done ✅"
 
       - name: Restore Tailscale state
         run: |
@@ -47,6 +60,7 @@ jobs:
             sudo mkdir -p /var/lib/tailscale
             sudo cp /opt/vps-backup/data/tailscaled.state /var/lib/tailscale/tailscaled.state
             sudo chmod 600 /var/lib/tailscale/tailscaled.state
+            echo "Restore Tailscale state... Done ✅"
           else
             echo "⚠ No Tailscale state to restore"
           fi
@@ -56,15 +70,19 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
+          echo "Install prerequisites... Done ✅"
 
       - name: Install Tailscale
-        run: curl -fsSL https://tailscale.com/install.sh | sh
+        run: |
+          curl -fsSL https://tailscale.com/install.sh | sh
+          echo "Install Tailscale... Done ✅"
 
       - name: Start Tailscale
         run: |
           sudo tailscaled &
           sleep 8
           sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=HTVPS || echo "Tailscale already up"
+          echo "Start Tailscale... Done ✅"
 
       - name: Create user HTNodes with sudo
         run: |
@@ -74,6 +92,7 @@ jobs:
             sudo usermod -aG sudo HTNodes
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
+          echo "Create user HTNodes... Done ✅"
 
       - name: Start SSHX session and keep alive
         run: |
@@ -103,6 +122,7 @@ jobs:
           kill $SSHX_PID || true
           wait $SSHX_PID || true
           set +x
+          echo "SSHX session... Done ✅"
 
       # 4. On shutdown → make new backup
       - name: Backup VPS data
@@ -116,8 +136,8 @@ jobs:
           fi
 
           TOTAL_SIZE=$(du -sb /home/HTNodes $BACKUP_DIR 2>/dev/null | awk '{sum+=$1} END {print sum}')
-          cd /  # ⬅️ makes paths inside tar start with home/ not /home/
-          sudo tar -cf - home/HTNodes opt/vps-backup | pv -s $TOTAL_SIZE | pigz -9 > $GITHUB_WORKSPACE/backup.tar.gz
+          sudo tar -cf - /home/HTNodes $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
+          echo "Backup VPS data... Done ✅"
 
       # 5. Delete old asset + upload new one
       - name: Delete old backup asset
@@ -130,6 +150,7 @@ jobs:
           else
             echo "⚠ No old asset found"
           fi
+          echo "Delete old backup asset... Done ✅"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -140,3 +161,4 @@ jobs:
           files: backup.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - run: echo "Upload new backup to release... Done ✅"
