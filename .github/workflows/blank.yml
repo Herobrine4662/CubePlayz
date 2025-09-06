@@ -34,7 +34,8 @@ jobs:
           if [ -f backup.tar.gz ]; then
             echo "✅ Restoring backup..."
             sudo mkdir -p /opt/vps-backup
-            tar -xzf backup.tar.gz -C /
+            cd /  # ⬅️ important so paths restore correctly
+            sudo tar -xzf $GITHUB_WORKSPACE/backup.tar.gz
           else
             echo "⚠ No backup found, starting fresh"
           fi
@@ -50,7 +51,7 @@ jobs:
             echo "⚠ No Tailscale state to restore"
           fi
 
-      # 3. Run VPS session (same as before)
+      # 3. Run VPS session
       - name: Install prerequisites
         run: |
           sudo apt update
@@ -115,7 +116,8 @@ jobs:
           fi
 
           TOTAL_SIZE=$(du -sb /home/HTNodes $BACKUP_DIR 2>/dev/null | awk '{sum+=$1} END {print sum}')
-          sudo tar -cf - /home/HTNodes $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
+          cd /  # ⬅️ makes paths inside tar start with home/ not /home/
+          sudo tar -cf - home/HTNodes opt/vps-backup | pv -s $TOTAL_SIZE | pigz -9 > $GITHUB_WORKSPACE/backup.tar.gz
 
       # 5. Delete old asset + upload new one
       - name: Delete old backup asset
