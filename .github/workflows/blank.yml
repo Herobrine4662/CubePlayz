@@ -18,49 +18,47 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set hostname to HTNodes
-        run: |
-          sudo hostnamectl set-hostname HTNodes
-          echo "✅ Done: Hostname set"
+        run: sudo hostnamectl set-hostname HTNodes
 
-      # 1. Download backup.tar.gz from release latest-backup
+      # 1. Download backup parts from release
       - name: Download latest backup from release
         run: |
-          echo "📥 Downloading backup from latest-backup release..."
-          gh release download latest-backup --repo ${{ github.repository }} --pattern "backup.tar.gz" || echo "⚠ No backup found"
-          echo "✅ Done: Backup downloaded (if exists)"
+          echo "📥 Downloading backup parts from latest-backup release..."
+          gh release download latest-backup --repo ${{ github.repository }} --pattern "backup.part-*" || echo "⚠ No backup found"
+          
+          if ls backup.part-* 1> /dev/null 2>&1; then
+            echo "✅ Reassembling backup..."
+            cat backup.part-* > backup.tar.gz
+            rm -f backup.part-*
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 2. Restore system from backup
+      # 2. Restore /home/HTNodes, /var/www/pterodactyl, /etc/pterodactyl
       - name: Restore backup files
         run: |
           if [ -f backup.tar.gz ]; then
             echo "✅ Restoring backup..."
-            cd /
-            sudo tar -xzf $GITHUB_WORKSPACE/backup.tar.gz
-            echo "✅ Done: Files restored to /"
+            sudo tar -xzf backup.tar.gz -C /
+            echo "✅ Restore complete"
           else
             echo "⚠ No backup found, starting fresh"
           fi
 
-      # 3. Run VPS session
+      # 3. Run VPS session (same as before)
       - name: Install prerequisites
         run: |
           sudo apt update
           sudo apt install -y curl unzip sudo net-tools neofetch pv pigz
-          echo "✅ Done: Prerequisites installed"
 
       - name: Install Tailscale
-        run: |
-          curl -fsSL https://tailscale.com/install.sh | sh
-          echo "✅ Done: Tailscale installed"
+        run: curl -fsSL https://tailscale.com/install.sh | sh
 
       - name: Start Tailscale
         run: |
           sudo tailscaled &
           sleep 8
           sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname=HTVPS || echo "Tailscale already up"
-          echo "✅ Done: Tailscale started"
 
       - name: Create user HTNodes with sudo
         run: |
@@ -70,7 +68,6 @@ jobs:
             sudo usermod -aG sudo HTNodes
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
-          echo "✅ Done: User HTNodes ensured"
 
       - name: Start SSHX session and keep alive
         run: |
@@ -100,66 +97,37 @@ jobs:
           kill $SSHX_PID || true
           wait $SSHX_PID || true
           set +x
-          echo "✅ Done: SSHX session ended"
 
       # 4. On shutdown → make new backup
       - name: Backup VPS data
         run: |
           echo "✅ Backing up VPS data..."
           BACKUP_DIR="/opt/vps-backup"
-          sudo mkdir -p "$BACKUP_DIR/data"
+          sudo mkdir -p "$BACKUP_DIR"
 
-          if [ -f /var/lib/tailscale/tailscaled.state ]; then
-            sudo cp /var/lib/tailscale/tailscaled.state "$BACKUP_DIR/data/"
-          fi
+          TOTAL_SIZE=$(du -sb /home/HTNodes /var/www/pterodactyl /etc/pterodactyl $BACKUP_DIR 2>/dev/null | awk '{sum+=$1} END {print sum}')
+          sudo tar -cf - /home/HTNodes /var/www/pterodactyl /etc/pterodactyl $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > backup.tar.gz
 
-          # Directories to include
-          INCLUDE_DIRS="
-          /home/HTNodes
-          /var/www/pterodactyl
-          /etc/pterodactyl
-          /etc
-          /usr/bin
-          /usr/sbin
-          /usr/lib
-          /lib
-          /lib64
-          /var/lib
-          "
+          echo "✅ Splitting backup into 1.9GB parts..."
+          split -b 1900M backup.tar.gz backup.part-
+          rm -f backup.tar.gz
 
-          # Exclude unnecessary dirs
-          EXCLUDES="
-          --exclude=/var/cache/*
-          --exclude=/var/log/*
-          --exclude=/tmp/*
-          --exclude=/var/tmp/*
-          "
-
-          TOTAL_SIZE=$(sudo du -sb $INCLUDE_DIRS 2>/dev/null | awk '{sum+=$1} END {print sum}')
-
-          cd /
-          sudo tar -cf - $EXCLUDES $INCLUDE_DIRS $BACKUP_DIR | pv -s $TOTAL_SIZE | pigz -9 > $GITHUB_WORKSPACE/backup.tar.gz
-          echo "✅ Done: backup.tar.gz created"
-
-      # 5. Delete old asset + upload new one
-      - name: Delete old backup asset
+      # 5. Delete old assets + upload new ones
+      - name: Delete old backup assets
         run: |
-          ASSET_ID=$(gh api repos/${{ github.repository }}/releases/tags/latest-backup \
-            --jq '.assets[] | select(.name=="backup.tar.gz") | .id' || true)
-          if [ -n "$ASSET_ID" ]; then
-            echo "🗑 Deleting old backup asset..."
-            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ASSET_ID
-          else
-            echo "⚠ No old asset found"
-          fi
-          echo "✅ Done: Old asset deletion step finished"
+          ASSET_IDS=$(gh api repos/${{ github.repository }}/releases/tags/latest-backup \
+            --jq '.assets[] | select(.name | startswith("backup.part-")) | .id' || true)
+          for ID in $ASSET_IDS; do
+            echo "🗑 Deleting old backup asset $ID..."
+            gh api -X DELETE repos/${{ github.repository }}/releases/assets/$ID
+          done
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload new backup to release
+      - name: Upload new backup parts to release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: latest-backup
-          files: backup.tar.gz
+          files: backup.part-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
