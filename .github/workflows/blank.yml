@@ -69,7 +69,7 @@ jobs:
             echo "HTNodes ALL=(ALL) NOPASSWD:ALL" | sudo tee /etc/sudoers.d/HTNodes
           fi
 
-      - name: Start SSHX + Tmate session and keep alive
+      - name: Start SSHX session and keep alive
         run: |
           set -x
           TS_IP=$(tailscale ip -4 2>/dev/null | head -n 1)
@@ -83,15 +83,7 @@ jobs:
           curl -sSf https://sshx.io/get | sh -s run &
           SSHX_PID=$!
 
-          echo "✅ Starting Tmate..."
-          sudo apt-get install -y tmate
-          tmate -F new-session -d
-          TMATE_SOCK=$(tmate -S /tmp/tmate.sock new-session -d 2>/dev/null || echo "/tmp/tmate.sock")
-          tmate -S $TMATE_SOCK wait tmate-ready
-          echo "👉 Tmate SSH: $(tmate -S $TMATE_SOCK display -p '#{tmate_ssh}')"
-          echo "👉 Tmate Web: $(tmate -S $TMATE_SOCK display -p '#{tmate_web}')"
-
-          echo "✅ SSHX + Tmate started. Keeping alive for 5h 40m..."
+          echo "✅ SSHX started. Keeping alive for 5h 40m..."
           SECONDS_LEFT=$((340 * 60))
           while [ $SECONDS_LEFT -gt 0 ]; do
             if ps -p $SSHX_PID > /dev/null; then
