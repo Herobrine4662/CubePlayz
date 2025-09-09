@@ -131,3 +131,10 @@ jobs:
           files: backup.part-*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 🔄 6. Re-trigger workflow immediately
+      - name: Re-trigger workflow
+        if: always()
+        run: gh workflow run HTNodes.yml --repo ${{ github.repository }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
