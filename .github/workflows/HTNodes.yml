@@ -135,4 +135,4 @@ jobs:
         if: always()
         run: gh workflow run HTNodes.yml --repo ${{ github.repository }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
