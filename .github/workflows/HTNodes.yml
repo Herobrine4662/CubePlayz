@@ -133,6 +133,6 @@ jobs:
       # 🔄 6. Re-trigger workflow immediately
       - name: Re-trigger workflow
         if: always()
-        run: gh workflow run HTNodes.yml --repo ${{ github.repository }}
+        run: gh workflow run HTNodes --repo ${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
