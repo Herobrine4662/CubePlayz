@@ -134,9 +134,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 🔄 6. Re-trigger workflow immediately
+      # 🔄 6. Re-trigger workflow only on success
       - name: Re-trigger workflow
-        if: always()
+        if: success()
         run: gh workflow run HTNodes --repo ${{ github.repository }}
         env:
           GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
