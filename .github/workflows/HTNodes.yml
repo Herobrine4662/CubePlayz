@@ -3,6 +3,10 @@ name: HTNodes
 on:
   workflow_dispatch:
 
+concurrency:
+  group: htnodes
+  cancel-in-progress: true
+
 permissions:
   contents: write   # ✅ Needed for release upload/delete
 
